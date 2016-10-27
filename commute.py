@@ -10,6 +10,9 @@ import requests
 from time_functions import *
 from parsers import *
 import pandas as pd
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
+
 
 def get_to_from():
     add_dict = {'home': '2665 Garfield Cir, Denver, CO 80210, USA',
@@ -48,41 +51,67 @@ def get_sun():
     return data
 
 
-def get_accu_weather():
+def accu_api():
     url = 'http://dataservice.accuweather.com/currentconditions/v1/347810?apikey={0}&details=true'
-    resp = requests.get(url.format(os.environ['ACCU_WEATHER_KEY'])).json()[0]
-    return parse_accu_json(resp)
-
-
-def get_data():
-    data = {'time': time.time()}
-    data.update(get_dm())
-    data.update(get_sun())
-    data.update(get_accu_weather())
+    try:
+        resp = requests.get(url.format(os.environ['ACCU_WEATHER_KEY'])).json()[0]
+        data = parse_accu_json(resp)
+    except Exception as e:
+        print 'Accuweather offline...'
+        data = dict()
     return data
 
 
+def get_accu_weather():
+    i = 0
+    data = accu_api()
+    while True:
+        if i < 5:
+            i += 1
+            yield data
+        else:
+            i = 0
+            data = accu_api()
+            yield data
+
+
+def get_data():
+    accu_gen = get_accu_weather()
+    while True:
+        data = {'time': time.time()}
+        data.update(get_dm())
+        data.update(get_sun())
+        data.update(accu_gen.next())
+        yield data
+
+
 def insert_dynamodb():
-    data = get_data()
+    data_gen = get_data()
     conn = boto.dynamodb.connect_to_region(
         'us-east-1', aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
     table = conn.get_table('commute')
-    item = table.new_item(attrs=data)
-    item.put()
-    print 'Uploaded to dynamodb!'
+    while True:
+        data = data_gen.next()
+        item = table.new_item(attrs=data)
+        item.put()
+        print 'Uploaded to dynamodb!'
+        yield
 
 
 def commute_hours():
+    dynamodb_gen = None
     while True:
         os.system('clear')
         while test_time():
-
+            if dynamodb_gen is None:
+                dynamodb_gen = insert_dynamodb()
             os.system('clear')
             print_time()
             print 'Pulling current traffic data...'
-            insert_dynamodb()
+            dynamodb_gen.next()
             sleep_min()
-
+        if not dynamodb_gen is None:
+            dynamodb_gen = None
         print_time()
         print 'Not monitoring traffic conditions...'
         sleep_min()
@@ -97,6 +126,13 @@ def all_hours():
         sleep_min()
 
 
+def morning_afternoon(t):
+    if t.hour < 12:
+        return 'm'
+    else:
+        return 'a'
+
+
 def make_df():
     conn = boto.dynamodb.connect_to_region(
         'us-east-1', aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
@@ -104,7 +140,29 @@ def make_df():
     df = pd.DataFrame()
     for i in table.scan():
         df = df.append(i, ignore_index=True)
+    df['time'] = df.apply(lambda x:  dt.datetime.fromtimestamp(x['time']), axis=1)
+    df['month_day'] = df.apply(lambda x: '{0}_{1}'.format(x['time'].month, x['time'].day), axis=1)
+    df['m/a'] = df.apply(lambda x: morning_afternoon(x['time']), axis=1)
     return df
+
+
+def graph():
+    df = make_df()
+    print 'gathered df'
+    df.set_index('time', inplace=True)
+    month_days = pd.unique(df['month_day'])
+    for month_day in month_days:
+
+        new_df = df[df['month_day'] == month_day]
+        morning_df = new_df[new_df['m/a'] == 'm']
+        afternoon_df = new_df[new_df['m/a'] == 'a']
+        if len(morning_df) > 0 and len(afternoon_df) > 0:
+            fig, axs = plt.subplots(2, 1)
+            morning_df[['duration']].plot(ax=axs[0])
+            afternoon_df[['duration']].plot(ax=axs[1])
+            plt.title(month_day)
+            plt.show()
 
 if __name__ == '__main__':
     commute_hours()
+    # pass

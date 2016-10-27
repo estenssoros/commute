@@ -6,7 +6,7 @@ import time
 
 def test_time():
     now = dt.datetime.today()
-    if (now.hour > 5 and now.hour < 9) or (now.hour > 16 and now.hour < 19):
+    if (now.hour >= 5 and now.hour < 9) or (now.hour >= 16 and now.hour < 19):
         return True
     else:
         return False
