@@ -1,4 +1,7 @@
 def parse_accu_json(resp):
+    '''
+    json reader for accuweather response
+    '''
     data = {}
     data['apparent_temperature'] = resp['ApparentTemperature']['Imperial']['Value']
     data['ceiling'] = resp['Ceiling']['Imperial']['Value']

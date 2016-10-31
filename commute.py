@@ -1,22 +1,19 @@
 from __future__ import division
 import googlemaps
-import boto.dynamodb
 import os
-import re
 import time
+import json
 import datetime as dt
 from astral import Astral
 import requests
-from time_functions import *
-from parsers import *
-import pandas as pd
-import matplotlib.pyplot as plt
-plt.style.use('ggplot')
+from time_functions import test_time, print_time, sleep_min
+from parsers import parse_accu_json
+from aws import connect_dynamodb
 
 
 def get_to_from():
-    add_dict = {'home': '2665 Garfield Cir, Denver, CO 80210, USA',
-                'work': '1800 Larimer St, Denver, CO 80202, USA'}
+    with open('addresses.json', 'r') as f:
+        add_dict = json.load(f)
     if dt.datetime.today().hour < 12:
         return add_dict['home'], add_dict['work']
     else:
@@ -24,6 +21,9 @@ def get_to_from():
 
 
 def get_dm():
+    '''
+    api
+    '''
     origin, destination = get_to_from()
     gmaps = googlemaps.Client(key=os.environ['GMAPS_API_KEY'])
     response = gmaps.distance_matrix(origin,
@@ -39,6 +39,20 @@ def get_dm():
     return data
 
 
+def accu_api():
+    '''
+    api
+    '''
+    url = 'http://dataservice.accuweather.com/currentconditions/v1/347810?apikey={0}&details=true'
+    try:
+        resp = requests.get(url.format(os.environ['ACCU_WEATHER_KEY'])).json()[0]
+        data = parse_accu_json(resp)
+    except Exception as e:
+        print 'Accuweather offline...'
+        data = dict()
+    return data
+
+
 def get_sun():
     data = {}
     city_name = 'Denver'
@@ -51,18 +65,10 @@ def get_sun():
     return data
 
 
-def accu_api():
-    url = 'http://dataservice.accuweather.com/currentconditions/v1/347810?apikey={0}&details=true'
-    try:
-        resp = requests.get(url.format(os.environ['ACCU_WEATHER_KEY'])).json()[0]
-        data = parse_accu_json(resp)
-    except Exception as e:
-        print 'Accuweather offline...'
-        data = dict()
-    return data
-
-
 def get_accu_weather():
+    '''
+    generator
+    '''
     i = 0
     data = accu_api()
     while True:
@@ -76,6 +82,9 @@ def get_accu_weather():
 
 
 def get_data():
+    '''
+    generator
+    '''
     accu_gen = get_accu_weather()
     while True:
         data = {'time': time.time()}
@@ -86,10 +95,11 @@ def get_data():
 
 
 def insert_dynamodb():
+    '''
+    generator
+    '''
     data_gen = get_data()
-    conn = boto.dynamodb.connect_to_region(
-        'us-east-1', aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
-    table = conn.get_table('commute')
+    table = connect_dynamodb()
     while True:
         data = data_gen.next()
         item = table.new_item(attrs=data)
@@ -125,43 +135,6 @@ def all_hours():
         insert_dynamodb()
         sleep_min()
 
-
-def morning_afternoon(t):
-    if t.hour < 12:
-        return 'm'
-    else:
-        return 'a'
-
-
-def make_df():
-    conn = boto.dynamodb.connect_to_region(
-        'us-east-1', aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
-    table = conn.get_table('commute')
-    df = pd.DataFrame()
-    for i in table.scan():
-        df = df.append(i, ignore_index=True)
-    df['time'] = df.apply(lambda x:  dt.datetime.fromtimestamp(x['time']), axis=1)
-    df['month_day'] = df.apply(lambda x: '{0}_{1}'.format(x['time'].month, x['time'].day), axis=1)
-    df['m/a'] = df.apply(lambda x: morning_afternoon(x['time']), axis=1)
-    return df
-
-
-def graph():
-    df = make_df()
-    print 'gathered df'
-    df.set_index('time', inplace=True)
-    month_days = pd.unique(df['month_day'])
-    for month_day in month_days:
-
-        new_df = df[df['month_day'] == month_day]
-        morning_df = new_df[new_df['m/a'] == 'm']
-        afternoon_df = new_df[new_df['m/a'] == 'a']
-        if len(morning_df) > 0 and len(afternoon_df) > 0:
-            fig, axs = plt.subplots(2, 1)
-            morning_df[['duration']].plot(ax=axs[0])
-            afternoon_df[['duration']].plot(ax=axs[1])
-            plt.title(month_day)
-            plt.show()
 
 if __name__ == '__main__':
     commute_hours()
