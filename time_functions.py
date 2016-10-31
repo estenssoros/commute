@@ -6,7 +6,12 @@ import time
 
 def test_time():
     now = dt.datetime.today()
-    if (now.hour >= 5 and now.hour < 9) or (now.hour >= 16 and now.hour < 19):
+    m_open = dt.datetime(now.year, now.month, now.day, 5, 00, 00, 00)
+    m_close = dt.datetime(now.year, now.month, now.day, 10, 0, 00, 00)
+
+    a_open = dt.datetime(now.year, now.month, now.day, 16, 0, 00, 00)
+    a_close = dt.datetime(now.year, now.month, now.day, 19, 0, 00, 00)
+    if (now > m_open and now < m_close) or (m > a_open and now < a_close):
         return True
     else:
         return False
