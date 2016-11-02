@@ -2,8 +2,8 @@
 data collection and commute time predictions
 
 # Data Collection
-## ![Monday](images/Monday.png)
-## ![Tuesday](images/Tuesday.png)
-## ![Wednesday](images/Wednesday.png)
-## ![Thursday](images/Thursday.png)
-## ![Friday](images/Friday.png)
+# Morning commute times
+## ![Morning](images/morning.png)
+
+# Afternoon commute times
+## ![Afternoon](images/afternoon.png)
