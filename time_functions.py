@@ -11,18 +11,14 @@ def test_time():
     a_open = dt.datetime(now.year, now.month, now.day, 16, 0, 00, 00)
     a_close = dt.datetime(now.year, now.month, now.day, 19, 0, 00, 00)
 
-    if (now > m_open and now < m_close) or (m > a_open and now < a_close):
+    if (now > m_open and now < m_close) or (now > a_open and now < a_close):
         return True
     else:
         return False
 
 
 def print_time():
-    if sys.platform == 'linux2':
-        hours = 4
-    else:
-        hours = 0
-    t = dt.datetime.today() - dt.timedelta(hours=hours)
+    t = dt.datetime.today()
     print 'Current time is: {0}'.format(t.strftime('%r'))
 
 

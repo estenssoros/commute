@@ -8,8 +8,8 @@ from astral import Astral
 import requests
 from time_functions import test_time, print_time, sleep_min
 from parsers import parse_accu_json
-from aws import connect_dynamodb
-
+from aws import *
+import pandas as pd
 
 def get_to_from():
     with open('addresses.json', 'r') as f:
@@ -106,7 +106,14 @@ def insert_dynamodb():
         item.put()
         print 'Uploaded to dynamodb!'
         yield
-
+def upload_data_s3():
+    fname = 'commute_data.csv'
+    table = connect_dynamodb()
+    data = list(table.scan())
+    df = pd.DataFrame(data)
+    df.to_csv(fname)
+    upload_s3(fname)
+    os.remove(fname)
 
 def commute_hours():
     dynamodb_gen = None
@@ -121,6 +128,7 @@ def commute_hours():
             dynamodb_gen.next()
             sleep_min()
         if not dynamodb_gen is None:
+            upload_data_s3()
             dynamodb_gen = None
         print_time()
         print 'Not monitoring traffic conditions...'
