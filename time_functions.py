@@ -11,7 +11,7 @@ def test_time():
     a_open = dt.datetime(now.year, now.month, now.day, 16, 0, 00, 00)
     a_close = dt.datetime(now.year, now.month, now.day, 19, 0, 00, 00)
 
-    if (now > m_open and now < m_close) or (now > a_open and now < a_close):
+    if ((now > m_open and now < m_close) or (now > a_open and now < a_close)) and (now.isoweekday() <= 5):
         return True
     else:
         return False

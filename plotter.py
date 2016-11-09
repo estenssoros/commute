@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 from aws import connect_dynamodb
 from time import time
+import subprocess
 
 
 def morning_afternoon(t):
@@ -32,56 +33,40 @@ def make_df():
     return df
 
 
-def graph():
-    df = make_df()
-    df.set_index('time', inplace=True)
-    weekdays = list(range(1, 6))
-    week_dict = {1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday',  5: 'Friday'}
-    for weekday in weekdays:
-        day_df = df[(df['dow'] == weekday) & (df['m/a'] == 'm')]
-        fig, ax = plt.subplots(1, 1)
 
-        data_days = pd.unique(day_df['month_day']).tolist()
-        data_days.sort()
-        for data_day in data_days:
-            day_df[day_df['month_day'] == data_day][['duration']].plot(ax=ax)
-        ax.xaxis.set_major_formatter(mpl.dates.DateFormatter('%H:%M'))
-        plt.title(week_dict[weekday], y=1.05)
-        plt.savefig('images/{0}.png'.format(week_dict[weekday]))
-        plt.ylabel('commute time in seconds')
-        plt.show()
-        plt.close()
-
-
-def graph_5(tod, df=None):
+def graph_5(df=None):
     if df is None:
         df = make_df()
+
     weekdays = list(range(1, 6))
     week_dict = {1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday',  5: 'Friday'}
-    fig, axs = plt.subplots(1, 5, sharey=True, figsize=(20, 4))
 
-    for weekday, ax in zip(weekdays, axs.flatten()):
-        day_df = df[(df['dow'] == weekday) & (df['m/a'] == tod)]
-        data_days = pd.unique(day_df['month_day']).tolist()
-        data_days.sort()
-        for data_day in data_days:
-            day_df[day_df['month_day'] == data_day][['duration']].plot(ax=ax)
-            ax.xaxis.set_major_formatter(mpl.dates.DateFormatter('%H:%M'))
-            ax.set_title(week_dict[weekday], y=1.05)
-            ax.legend_.remove()
+    tod_options = ['morning', 'afternoon']
+    fig, all_axs = plt.subplots(2, 5, sharey=True, figsize=(20, 8))
+
+    for tod, axs in zip(tod_options, all_axs):
+        for weekday, ax in zip(weekdays, axs):
+            day_df = df[(df['dow'] == weekday) & (df['m/a'] == tod)]
+            data_days = pd.unique(day_df['month_day']).tolist()
+            data_days.sort()
+            for data_day in data_days:
+                day_df[day_df['month_day'] == data_day][['duration']].plot(ax=ax)
+                ax.xaxis.set_major_formatter(mpl.dates.DateFormatter('%H:%M'))
+                ax.set_title(week_dict[weekday], y=1.05)
+                ax.legend_.remove()
 
     plt.ylabel('commute time in seconds')
     plt.tight_layout()
-    plt.savefig('images/{0}.png'.format(tod))
-    plt.show()
+    save_name = 'images/data.png'
+    plt.savefig(save_name)
     plt.close()
+    subprocess.Popen(['open', save_name])
 
 
 def main():
     df = make_df()
     df.set_index('time', inplace=True)
-    for tod in ['morning', 'afternoon']:
-        graph_5(tod, df=df)
+    graph_5(df)
 
 if __name__ == '__main__':
     main()
