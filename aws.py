@@ -9,14 +9,17 @@ def aws_keys():
     access_secret_key = env['AWS_SECRET_ACCESS_KEY']
     return access_key, access_secret_key
 
+
 def connect_s3():
     access_key, access_secret_key = aws_keys()
-    conn = boto.connect_s3(access_key, access_secret_key, calling_format=OrdinaryCallingFormat())
+    conn = boto.connect_s3(access_key, access_secret_key,
+                           calling_format=OrdinaryCallingFormat())
     bucket_name = 'sebsbucket'
     for bucket in conn.get_all_buckets():
         if bucket.name == bucket_name:
             break
     return bucket
+
 
 def connect_dynamodb():
     access_key, secret_key = aws_keys()

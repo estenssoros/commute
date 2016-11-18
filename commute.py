@@ -11,6 +11,7 @@ from parsers import parse_accu_json
 from aws import *
 import pandas as pd
 
+
 def get_to_from():
     with open('addresses.json', 'r') as f:
         add_dict = json.load(f)
@@ -18,6 +19,30 @@ def get_to_from():
         return add_dict['home'], add_dict['work']
     else:
         return add_dict['work'], add_dict['home']
+
+
+def get_coord(string):
+    gmaps = googlemaps.Client(key=os.environ['GMAPS_API_KEY'])
+    resp = gmaps.geocode(string)
+    lat_lng = resp[0]['geometry']['location']
+    return lat_lng['lat'], lat_lng['lng']
+
+
+def find_midpoint():
+    home, work = get_to_from()
+    home_coord = get_coord(home)
+    work_coord = get_coord(work)
+    return (home_coord[0] + work_coord[0]) / 2, (home_coord[1] + work_coord[1]) / 2,
+
+
+def get_accu_location_key():
+    lat, lng = find_midpoint()
+    api_key = os.environ['ACCU_WEATHER_KEY']
+    url = 'http://dataservice.accuweather.com/locations/v1/cities/geoposition/search.json?q={0}, {1}&apikey={2}'
+    resp = requests.get(url.format(lat, lng, api_key))
+    return resp.json()['Key']
+
+location_key = get_accu_location_key()
 
 
 def get_dm():
@@ -35,7 +60,10 @@ def get_dm():
     elements = response['rows'][0]['elements'][0]
     duration = elements['duration_in_traffic']
     distance = elements['distance']
-    data = {'distance': distance['value'], 'duration': duration['value']}
+    data = {'distance': distance['value'],
+            'duration': duration['value'],
+            'origin': origin,
+            'destination': destination}
     return data
 
 
@@ -43,9 +71,10 @@ def accu_api():
     '''
     api
     '''
-    url = 'http://dataservice.accuweather.com/currentconditions/v1/347810?apikey={0}&details=true'
+    url = 'http://dataservice.accuweather.com/currentconditions/v1/{0}?apikey={1}&details=true'
     try:
-        resp = requests.get(url.format(os.environ['ACCU_WEATHER_KEY'])).json()[0]
+        resp = requests.get(url.format(location_key, os.environ[
+                            'ACCU_WEATHER_KEY'])).json()[0]
         data = parse_accu_json(resp)
     except Exception as e:
         print 'Accuweather offline...'
@@ -81,7 +110,7 @@ def get_accu_weather():
             yield data
 
 
-def get_data():
+def make_data_gen():
     '''
     generator
     '''
@@ -94,11 +123,11 @@ def get_data():
         yield data
 
 
-def insert_dynamodb():
+def make_dynamodb_gen():
     '''
     generator
     '''
-    data_gen = get_data()
+    data_gen = make_data_gen()
     table = connect_dynamodb()
     while True:
         data = data_gen.next()
@@ -106,6 +135,8 @@ def insert_dynamodb():
         item.put()
         print 'Uploaded to dynamodb!'
         yield
+
+
 def upload_data_s3():
     fname = 'commute_data.csv'
     table = connect_dynamodb()
@@ -115,13 +146,14 @@ def upload_data_s3():
     upload_s3(fname)
     os.remove(fname)
 
+
 def commute_hours():
     dynamodb_gen = None
     while True:
         os.system('clear')
         while test_time():
             if dynamodb_gen is None:
-                dynamodb_gen = insert_dynamodb()
+                dynamodb_gen = make_dynamodb_gen()
             os.system('clear')
             print_time()
             print 'Pulling current traffic data...'
@@ -135,15 +167,5 @@ def commute_hours():
         sleep_min()
 
 
-def all_hours():
-    while True:
-        os.system('clear')
-        print_time()
-        print 'Pulling current traffic data...'
-        insert_dynamodb()
-        sleep_min()
-
-
 if __name__ == '__main__':
     commute_hours()
-    # pass
