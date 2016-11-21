@@ -1,6 +1,8 @@
-import boto.dynamodb
 import boto
+import boto.dynamodb
+from boto.s3.connection import OrdinaryCallingFormat
 import os
+
 
 
 def aws_keys():
