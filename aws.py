@@ -7,8 +7,8 @@ import os
 
 def aws_keys():
     env = os.environ
-    access_key = env['AWS_ACCESS_KEY_ID']
-    access_secret_key = env['AWS_SECRET_ACCESS_KEY']
+    access_key = env['MY_AWS_ACCESS_KEY_ID']
+    access_secret_key = env['MY_AWS_SECRET_ACCESS_KEY']
     return access_key, access_secret_key
 
 
