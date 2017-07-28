@@ -8,7 +8,7 @@ from astral import Astral
 import requests
 from time_functions import test_time, print_time, sleep_min
 from parsers import parse_accu_json
-from aws import *
+from aws import connect_dynamodb,upload_s3
 import pandas as pd
 
 
@@ -22,7 +22,7 @@ def get_to_from():
 
 
 def get_coord(string):
-    gmaps = googlemaps.Client(key=os.environ['GMAPS_API_KEY'])
+    gmaps = googlemaps.Client(key=os.environ['GOOGLE_KEY'])
     resp = gmaps.geocode(string)
     lat_lng = resp[0]['geometry']['location']
     return lat_lng['lat'], lat_lng['lng']
@@ -73,8 +73,7 @@ def accu_api():
     '''
     url = 'http://dataservice.accuweather.com/currentconditions/v1/{0}?apikey={1}&details=true'
     try:
-        resp = requests.get(url.format(location_key, os.environ[
-                            'ACCU_WEATHER_KEY'])).json()[0]
+        resp = requests.get(url.format(location_key, os.environ['ACCU_WEATHER_KEY'])).json()[0]
         data = parse_accu_json(resp)
     except Exception as e:
         print 'Accuweather offline...'
