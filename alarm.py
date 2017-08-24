@@ -4,15 +4,20 @@ import os
 import re
 import sys
 import time
+import urllib
 
 import googlemaps
 import MySQLdb
 import pytz
+import requests
+from tabulate import tabulate
 from twilio.rest import Client
 
 address_book = {
-    'seb': '13032299207',
+    'me': '13032299207',
 }
+
+GMAPS_API_KEY = os.environ['GMAPS_API_KEY']
 
 
 def twilio_message(to, msg):
@@ -24,7 +29,7 @@ def twilio_message(to, msg):
 
 
 def distance_matrix_api(**kwargs):
-    gmaps = googlemaps.Client(key=os.environ['GMAPS_API_KEY'])
+    gmaps = googlemaps.Client(key=GMAPS_API_KEY)
     args = {'mode': 'driving',
             'units': 'imperial',
             'departure_time': dt.datetime.today(),
@@ -33,8 +38,15 @@ def distance_matrix_api(**kwargs):
             'origins': kwargs['origin'],
             'destinations': kwargs['destination']}
     response = gmaps.distance_matrix(**args)
+    while response['status'] != 'OK':
+        print 'bad response: {}'.format(response)
+        time.sleep(1)
+        response = gmaps.distance_matrix(**args)
     elements = response['rows'][0]['elements'][0]
-    duration = elements['duration_in_traffic']['value']
+    if elements.get('duration_in_traffic'):
+        duration = elements['duration_in_traffic']['value']
+    else:
+        duration = 0
     distance = elements['distance']['value']
     traffic = duration - elements['duration']['value']
     data = {'distance': distance,
@@ -45,6 +57,21 @@ def distance_matrix_api(**kwargs):
     return data
 
 
+def create_url(**kwargs):
+    dir_url = 'https://www.google.com/maps/dir/?api=1&'
+    to_encode = {'origin': kwargs['origin'], 'destination': kwargs['destination']}
+    url = dir_url + urllib.urlencode(to_encode)
+    return url
+
+
+def shorten_url(url):
+    post_url = 'https://www.googleapis.com/urlshortener/v1/url?key={}'.format(GMAPS_API_KEY)
+    payload = {'longUrl': url}
+    headers = {'content-type': 'application/json'}
+    r = requests.post(post_url, data=json.dumps(payload), headers=headers)
+    return r.json()
+
+
 def seconds_to_time(seconds):
     m, s = divmod(seconds, 60)
     h, m = divmod(m, 60)
@@ -53,21 +80,18 @@ def seconds_to_time(seconds):
 
 def check_arrival_time(**kwargs):
     dm = distance_matrix_api(**kwargs)
-    now = dt.datetime.utcnow() - dt.timedelta(hours=6)
+    now = dt.datetime.utcnow()
     arrival = now + dt.timedelta(seconds=dm['duration'])
-    repeat = True
     if arrival >= kwargs['arrival_time']:
-        msg = arrival.strftime('Depart now to arrive at: %-I:%M:%S %p\n\n')
-        msg += 'origin: {}\n'.format(dm['origin'])
-        msg += 'destination: {}'.format(dm['destination'])
+        msg_time = arrival - dt.timedelta(hours=6)
+        msg = msg_time.strftime('Depart now to arrive at: %-I:%M:%S %p\n\n')
         if dm['traffic'] > 5 * 60:
             traffic_time = seconds_to_time(dm['traffic'])
-            msg += '\nTraffic: {}'.format(traffic_time)
+            msg += 'Traffic: {}\n'.format(traffic_time)
+        msg += kwargs['short_url']
         twilio_message(address_book['me'], msg)
-        repeat = False
-    else:
-        print arrival.strftime('Current arrival time: %-I:%M:%S %p')
-    return repeat
+        return False
+    return True
 
 
 time_re = re.compile(r'(?P<hour>[0-9]+):(?P<minute>[0-9]+)')
@@ -98,8 +122,16 @@ def get_commute_pair():
     return res
 
 
+def lookup_address(add):
+    gmaps = googlemaps.Client(key=GMAPS_API_KEY)
+    resp = gmaps.geocode(add)
+    return respo[0]['formatted_address']
+
+
 def main():
     commute_pair = get_commute_pair()
+    commute_url = create_url(**commute_pair)
+    commute_pair['short_url'] = shorten_url(commute_url)['id']
     commute_pair['arrival_time'] = string_to_datetime(commute_pair['arrival_time'])
     while check_arrival_time(**commute_pair):
         time.sleep(60)
